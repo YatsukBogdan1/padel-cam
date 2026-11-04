@@ -1,0 +1,64 @@
+name = "padel-worker"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+# The *.workers.dev address stays on: anything printed with a court's QR code points
+# at it. To add a custom domain, also set e.g.
+#   routes = [{ pattern = "app.example.com", custom_domain = true }]
+workers_dev = true
+
+# Web UI (public/) is served as static assets. Requests that don't match a file
+# fall through to the Worker (which owns /api/* and /agent).
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# NOT set to "single-page-application" on purpose. That mode makes the assets
+# router answer every *document navigation* with index.html BEFORE the Worker
+# runs, which silently swallowed /s/:token share links and turned every
+# `<a download>` into a download of index.html. Worker routes that need to serve
+# the SPA shell (e.g. /super) do it explicitly via serveAppShell instead.
+
+[vars]
+RETENTION_DAYS = "14"
+# Where alerts go.
+ALERT_TO = "alerts@example.com"
+# Sender. Cloudflare Email Sending needs this on a domain onboarded to the
+# account. Without one, alerts can go via Resend instead (set
+# RESEND_API_KEY as a secret). Resend's onboarding domain needs no DNS but only
+# delivers to the address the Resend account was registered with, which suits a
+# single-recipient alert feed. Swap this for alerts@yourdomain.com once you own
+# one, and remove RESEND_API_KEY to switch back to the native binding.
+ALERT_FROM = "onboarding@resend.dev"
+
+# Two cadences (see scheduled() in src/index.ts). Health has to be minutes: a
+# camera that dies the night before a booked match is no use discovered the next
+# morning, and a missing heartbeat is only ever found by looking. Retention and
+# the daily digest stay nightly.
+[triggers]
+crons = ["*/5 * * * *", "0 3 * * *"]
+
+# Alert email. Needs a sending domain onboarded on the account; the binding is
+# optional in code so an un-onboarded account logs instead of failing.
+[[send_email]]
+name = "EMAIL"
+
+# Video storage.
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "padel-cam-videos"
+
+# Recording + court metadata. PLACEHOLDER id: fine for local dev and tests; for a real
+# deployment replace it with `terraform output database_id`.
+[[d1_databases]]
+binding = "DB"
+database_name = "padel-cam-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+# One instance per court holds that court's camera WebSocket.
+[[durable_objects.bindings]]
+name = "COURT_CAMERA"
+class_name = "CourtCamera"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CourtCamera"]

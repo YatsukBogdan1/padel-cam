@@ -1,0 +1,16 @@
+# Copy to worker/.dev.vars for `npm run dev`. Gitignored. Every value is optional
+# locally; in production set these with `npx wrangler secret put <NAME>`.
+
+# Guards the camera-facing routes (/agent, part upload, complete, abort, segment).
+# Empty or missing means device auth is OFF: local development only, never production.
+# If you set it, run the agent with the same DEVICE_TOKEN.
+DEVICE_TOKEN=
+
+# Optional: send alert email through Resend instead of the Cloudflare binding.
+# With neither configured, alerts are only logged.
+RESEND_API_KEY=
+
+# Optional: the incident fixer (.github/workflows/fixer.yml). Without these, incidents
+# fall back to alert email. GITHUB_REPO is "owner/name".
+GITHUB_TOKEN=
+GITHUB_REPO=

@@ -1,0 +1,31 @@
+[Unit]
+Description=Padel Smart-Cam camera agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust User and paths to match where you cloned the repo.
+User=pi
+WorkingDirectory=/home/pi/padel-recording/agent
+EnvironmentFile=/home/pi/padel-recording/agent/deploy/padel-agent.env
+ExecStart=/usr/bin/env npm start
+Restart=always
+RestartSec=3
+# Give ffmpeg/rpicam time to flush on stop before the unit is killed. The agent
+# handles SIGTERM by finalizing the active recording, so this is the window it
+# gets to drain -- long enough to matter, short enough not to stall a reboot.
+TimeoutStopSec=45
+
+# Recording is the product. Under memory pressure the kernel must pick something
+# other than the process holding the match.
+OOMScoreAdjust=-500
+Nice=-5
+
+# No WatchdogSec: sd_notify needs a SOCK_DGRAM unix socket that node:dgram cannot
+# open, so it would cost a `systemd-notify` fork every 30s. The agent runs its own
+# staleness check instead (startSelfWatchdog), and the authoritative detector for
+# a wedged camera is off-machine anyway — the Worker sees the heartbeats stop.
+
+[Install]
+WantedBy=multi-user.target

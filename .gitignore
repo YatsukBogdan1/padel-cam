@@ -1,0 +1,36 @@
+node_modules/
+*.log
+
+# Scratch output (test footage, preset comparisons) — never commit video
+tmp/
+
+# Wrangler / Miniflare local state
+.wrangler/
+worker/.dev.vars
+
+# Fleet secrets (never commit)
+agent/deploy/.fleet.env
+agent/deploy/padel-agent.env
+
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+terraform/terraform.tfvars
+crash.log
+
+# JetBrains IDE files
+.idea/
+worker/public/
+
+# macOS Finder metadata
+.DS_Store
+
+# Local env files (examples stay tracked)
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example

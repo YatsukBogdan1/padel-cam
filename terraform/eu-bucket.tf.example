@@ -1,0 +1,26 @@
+# INERT: not loaded by Terraform (only *.tf files are). Prepared for a move of video
+# storage to an EU-jurisdiction R2 bucket; rename to eu-bucket.tf to apply it.
+#
+# The existing `cloudflare_r2_bucket.videos` (location hint `weur`) only *hints* at
+# placement. Jurisdiction `eu` guarantees EU storage and can only be set when a
+# bucket is created, so this is a second bucket, not an edit of the first. A new
+# name is required: the old bucket keeps its name until it is emptied and removed.
+#
+# After apply, point the Worker at it in worker/wrangler.toml:
+#
+#   [[r2_buckets]]
+#   binding = "BUCKET"
+#   bucket_name = "padel-cam-videos-eu"
+#   jurisdiction = "eu"
+#
+# S3 API endpoint for copying objects in: https://<ACCOUNT_ID>.eu.r2.cloudflarestorage.com
+
+resource "cloudflare_r2_bucket" "videos_eu" {
+  account_id   = var.account_id
+  name         = "padel-cam-videos-eu"
+  jurisdiction = "eu"
+}
+
+output "videos_eu_bucket_name" {
+  value = cloudflare_r2_bucket.videos_eu.name
+}

@@ -1,0 +1,210 @@
+# Investigate a production fault, and open a pull request only when the fix is
+# small and actually compiles.
+#
+# This runs in CI rather than in the Worker because a Worker cannot check out the
+# repo. A model editing code from there is working blind: it cannot run
+# `npm run typecheck`, which is this project's only check, so it would produce
+# plausible-looking patches that do not build. Here it gets a real tree.
+#
+# Nothing merges and nothing deploys. The output is, at most, a branch and a pull
+# request for a human to read.
+
+name: Incident fixer
+
+on:
+  repository_dispatch:
+    types: [padel-incident]
+  workflow_dispatch:
+    inputs:
+      incidentId:
+        description: Incident id to investigate
+        required: true
+      issueNumber:
+        description: Issue number holding the diagnostic bundle
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  # One investigation at a time. A burst of incidents must not become a burst of
+  # branches racing each other.
+  group: incident-fixer
+  cancel-in-progress: false
+
+jobs:
+  investigate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      INCIDENT_ID: ${{ github.event.client_payload.incidentId || inputs.incidentId }}
+      ISSUE_NUMBER: ${{ github.event.client_payload.issueNumber || inputs.issueNumber }}
+      SUMMARY: ${{ github.event.client_payload.summary || 'manual investigation' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The baseline. If main is already broken, whatever the fixer does next is
+      # unattributable, so stop and say so rather than opening a PR on top of it.
+      - name: Typecheck before touching anything
+        id: baseline
+        run: npm run typecheck
+
+      - name: Pull the diagnostic bundle
+        id: bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${ISSUE_NUMBER}" ]; then
+            gh issue view "${ISSUE_NUMBER}" --json title,body -q '.title + "\n\n" + .body' > /tmp/incident.md
+          else
+            echo "${SUMMARY}" > /tmp/incident.md
+          fi
+          echo "--- incident ---" && cat /tmp/incident.md
+
+      - name: Investigate
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            A production fault was reported by the Padel Smart-Cam Worker. The
+            diagnostic bundle is in /tmp/incident.md.
+
+            Read CLAUDE.md first — it explains the architecture and, more
+            usefully, why several counter-intuitive things are the way they are.
+
+            Your job, in this order:
+
+            1. Find the root cause. Read the code paths involved. Say plainly if
+               you cannot determine it from what you have; a wrong confident
+               answer is worse than "insufficient evidence", because someone will
+               act on it.
+            2. Write the analysis to /tmp/analysis.md: what happened, why, and
+               what you would change. This is the required output — always
+               produce it, even when you make no code change.
+            3. Only if the fix is small, obvious and low-risk, apply it and run
+               `npm run typecheck`. If it does not pass, revert your changes and
+               explain why in the analysis instead.
+
+            Do NOT modify these files. They are the capture path — the one part
+            of the system that must not have an unattended change, because a
+            mistake there loses a customer's match and nobody finds out until
+            they ask for it:
+              agent/src/spool.ts
+              agent/src/uploader.ts
+              agent/camera-agent.ts
+
+            If the fix belongs in the capture path, say so in the analysis and
+            change nothing.
+
+            Do not commit, push, or open a pull request yourself — the workflow
+            handles that.
+
+      # A change to the capture path is refused here as well as in the prompt.
+      # A rule that only exists in a prompt is a request, not a guard.
+      - name: Refuse changes to the capture path
+        id: guard
+        run: |
+          PROTECTED='agent/src/spool.ts agent/src/uploader.ts agent/camera-agent.ts'
+          touched=$(git diff --name-only)
+          echo "touched: ${touched:-<none>}"
+          for f in $PROTECTED; do
+            if echo "$touched" | grep -qx "$f"; then
+              echo "::error::fixer modified the protected capture path ($f); reverting"
+              git checkout -- .
+              echo "reverted=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "reverted=false" >> "$GITHUB_OUTPUT"
+
+      - name: Typecheck the proposed fix
+        id: verify
+        run: |
+          if [ -z "$(git diff --name-only)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if npm run typecheck; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::proposed fix does not typecheck; discarding it"
+            git checkout -- .
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open a pull request
+        id: pr
+        if: steps.verify.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="fix/incident-${INCIDENT_ID:0:8}"
+          git config user.name "padel-fixer"
+          git config user.email "noreply@anthropic.com"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -F - <<EOF
+          Proposed fix for: ${SUMMARY}
+
+          Filed automatically from a production incident. Typechecks, but has NOT
+          been run against hardware. Review before merging.
+
+          Incident: ${INCIDENT_ID}
+
+          Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+          EOF
+          git push -u origin "$BRANCH"
+          URL=$(gh pr create --title "Fix: ${SUMMARY}" \
+            --body-file /tmp/analysis.md \
+            --label automated \
+            --draft)
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      # The analysis is the deliverable, so it lands on the issue whether or not
+      # any code changed.
+      - name: Comment the analysis on the issue
+        if: env.ISSUE_NUMBER != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            cat /tmp/analysis.md 2>/dev/null || echo "No analysis was produced."
+            echo
+            if [ "${{ steps.guard.outputs.reverted }}" = "true" ]; then
+              echo "_A change to the capture path was proposed and refused. This needs a human._"
+            elif [ "${{ steps.verify.outputs.changed }}" = "true" ]; then
+              echo "_Draft PR: ${{ steps.pr.outputs.url }}_"
+            else
+              echo "_No code change proposed._"
+            fi
+          } > /tmp/comment.md
+          gh issue comment "${ISSUE_NUMBER}" --body-file /tmp/comment.md
+
+      - name: Report back to the Worker
+        if: always()
+        env:
+          BACKEND: ${{ secrets.PADEL_BACKEND }}
+          DEVICE_TOKEN: ${{ secrets.PADEL_DEVICE_TOKEN }}
+        run: |
+          [ -z "$BACKEND" ] && { echo "no BACKEND secret; skipping callback"; exit 0; }
+          SUMMARY_TEXT=$(head -c 3000 /tmp/analysis.md 2>/dev/null || echo "no analysis")
+          jq -n --arg s "${{ steps.guard.outputs.reverted == 'true' && 'needs-human' || (steps.verify.outputs.changed == 'true' && 'fix-proposed' || 'investigated') }}" \
+                --arg pr "${{ steps.pr.outputs.url }}" \
+                --arg sum "$SUMMARY_TEXT" \
+                '{status:$s, prUrl:($pr|select(.!="")), summary:$sum}' \
+            | curl -sS -X POST "$BACKEND/api/incidents/${INCIDENT_ID}/report" \
+                -H "authorization: Bearer $DEVICE_TOKEN" \
+                -H 'content-type: application/json' \
+                --data-binary @- || echo "callback failed (non-fatal)"

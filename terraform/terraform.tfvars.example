@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+# Prefer exporting the token instead of writing it here: export TF_VAR_api_token=...
+
+account_id     = "your-cloudflare-account-id"
+api_token      = "your-cloudflare-api-token" # R2 + D1 edit; or use TF_VAR_api_token
+bucket_name    = "padel-cam-videos"
+database_name  = "padel-cam-db"
+location_hint  = "weur"
+retention_days = 14

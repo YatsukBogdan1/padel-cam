@@ -1,0 +1,26 @@
+{
+  "name": "padel-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test",
+    "cf-typegen": "wrangler types",
+    "migrate:local": "wrangler d1 migrations apply padel-cam-db --local",
+    "migrate:remote": "wrangler d1 migrations apply padel-cam-db --remote",
+    "dev:remote": "wrangler dev --remote",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.0",
+    "@cloudflare/workers-types": "^4.20260601.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.20.0"
+  },
+  "dependencies": {
+    "qrcode-generator": "^1.5.2"
+  }
+}

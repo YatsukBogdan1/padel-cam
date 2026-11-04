@@ -1,0 +1,5 @@
+date,vendor,description,category,amount_eur,currency_original,amount_original,notes
+2026-08-03,ExampleParts,"Raspberry Pi 5, 8GB",hardware,137.99,,,
+2026-08-20,Cloudflare,Workers Paid,cloud,4.61,USD,5.00,"monthly, card ending 1234"
+2026-09-01,Cloudflare,R2 storage,cloud,0.29,,,
+2026-09-14,ExampleParts,"Refund: dead SD card ""SanDisk""",hardware,-12.50,,,returned

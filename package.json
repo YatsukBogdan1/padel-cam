@@ -1,0 +1,28 @@
+{
+  "name": "padel-recording",
+  "version": "1.0.0",
+  "description": "Cloudflare-native padel smart-cam: Worker API + Durable Objects + D1 + R2, deployed with Terraform + Wrangler",
+  "private": true,
+  "workspaces": [
+    "worker",
+    "agent",
+    "admin",
+    "e2e"
+  ],
+  "scripts": {
+    "dev": "npm --prefix worker run dev",
+    "dev:admin": "npm --prefix admin run dev",
+    "agent": "npm --prefix agent start",
+    "build": "npm --prefix admin run build",
+    "deploy": "npm run build && npm --prefix worker run deploy",
+    "typecheck": "npm --prefix worker run typecheck && npm --prefix agent run typecheck && npm --prefix admin run typecheck && npm --prefix e2e run typecheck",
+    "dev:remote": "npm --prefix worker run dev:remote",
+    "e2e": "npm --prefix e2e run e2e --",
+    "e2e:setup": "bash e2e/setup-pi.sh",
+    "preview": "bash agent/deploy/preview.sh",
+    "focus": "bash agent/deploy/preview.sh --meter",
+    "preview:zoom": "bash agent/deploy/preview.sh --zoom",
+    "preview:still": "bash agent/deploy/preview.sh --still",
+    "test": "npm --prefix worker test"
+  }
+}
